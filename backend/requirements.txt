@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+requests
+python-jose
+pymongo
+python-dotenv
+PyJWT
+cryptography
