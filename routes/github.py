@@ -50,7 +50,7 @@ def repo(owner: str, repo: str):
 @router.get("/github/refresh")
 def refresh_repos():
 
-    user = users_collection.find_one())
+    user = users_collection.find_one()
 
     if not user or "installation_id" not in user:
         return {"installed": False, "repos": []}
