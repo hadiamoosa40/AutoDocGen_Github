@@ -8,7 +8,7 @@ router = APIRouter()
 FRONTEND_URL = os.getenv("FRONTEND_URL")
 
 
-# 1. Install redirect
+# Step 1: install GitHub App
 @router.get("/github/install")
 def install():
     return RedirectResponse(
@@ -16,14 +16,20 @@ def install():
     )
 
 
-# 2. Callback after install
+# Step 2: GitHub redirects after install
 @router.get("/github/callback")
-def callback(installation_id: int):
+def callback(installation_id: int = None, setup_action: str = None):
 
-    users_collection.update_one(
-        {"installation_id": installation_id},
-        {"$set": {"installation_id": installation_id}},
-        upsert=True
-    )
+    # 🔥 FIX: always attach installation to latest logged-in user
+    user = users_collection.find_one({"github_token": {"$exists": True}})
+
+    if not user:
+        return {"error": "User not logged in"}
+
+    if installation_id:
+        users_collection.update_one(
+            {"_id": user["_id"]},
+            {"$set": {"installation_id": installation_id}}
+        )
 
     return RedirectResponse(f"{FRONTEND_URL}/dashboard")
