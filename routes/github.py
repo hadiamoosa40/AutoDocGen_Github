@@ -14,20 +14,18 @@ def get_current_user():
 @router.get("/github/repos")
 def repos():
 
-    user = get_current_user()
+    user = users_collection.find_one({"github_token": {"$exists": True}})
 
     if not user:
-        raise HTTPException(401, "User not logged in")
+        return {"error": "Not logged in"}
 
     if "installation_id" not in user:
-        return {"error": "GitHub App not installed yet"}
-
-    repos = get_repos(user["installation_id"])
+        return {"installed": False, "repos": []}
 
     return {
-        "repos": repos
+        "installed": True,
+        "repos": get_repos(user["installation_id"])
     }
-
 
 # ✅ CLICK REPO → FETCH DATA
 @router.get("/github/repo/{owner}/{repo}")
@@ -47,4 +45,18 @@ def repo(owner: str, repo: str):
     return {
         "message": "data fetched correctly",
         "repo": data
+    }
+@router.get("/github/refresh")
+def refresh_repos():
+
+    user = users_collection.find_one({"github_token": {"$exists": True}})
+
+    if not user or "installation_id" not in user:
+        return {"installed": False, "repos": []}
+
+    repos = get_repos(user["installation_id"])
+
+    return {
+        "installed": True,
+        "repos": repos
     }
