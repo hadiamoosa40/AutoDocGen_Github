@@ -2,20 +2,25 @@ from jose import jwt
 import time
 import requests
 import os
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.backends import default_backend
 
 APP_ID = os.getenv("GITHUB_APP_ID")
 PRIVATE_KEY = os.getenv("GITHUB_PRIVATE_KEY")
 
-
-# 1. Create GitHub App JWT
 def generate_jwt():
+    # Handle private key with proper formatting
+    private_key = PRIVATE_KEY
+    if "-----BEGIN RSA PRIVATE KEY-----" not in private_key:
+        private_key = "-----BEGIN RSA PRIVATE KEY-----\n" + private_key + "\n-----END RSA PRIVATE KEY-----"
+    
     payload = {
         "iat": int(time.time()),
         "exp": int(time.time()) + 600,
         "iss": APP_ID
     }
-
-    return jwt.encode(payload, PRIVATE_KEY, algorithm="RS256")
+    
+    return jwt.encode(payload, private_key, algorithm="RS256")
 
 
 # 2. Get installation token

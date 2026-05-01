@@ -68,6 +68,18 @@ def github_callback(code: str):
         print("❌ USER FETCH FAILED")
         return {"error": user}
 
+    # Get user's installations
+    installations_res = requests.get(
+        "https://api.github.com/user/installations",
+        headers={"Authorization": f"token {github_token}"},
+    )
+    installations = installations_res.json()
+    
+    installation_id = None
+    if installations.get("installations"):
+        installation_id = installations["installations"][0]["id"]
+    
+    # Store both token AND installation_id
     users_collection.update_one(
         {"github_id": user["id"]},
         {
@@ -76,11 +88,12 @@ def github_callback(code: str):
                 "username": user["login"],
                 "avatar": user["avatar_url"],
                 "github_token": github_token,
-                
+                "installation_id": installation_id  # ADD THIS
             }
         },
         upsert=True
     )
+    
 
     access = create_access_token({"user_id": user["id"]})
     refresh = create_refresh_token({"user_id": user["id"]})
