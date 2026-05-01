@@ -88,5 +88,5 @@ def github_callback(code: str):
     print("✅ SUCCESS REDIRECTING")
 
     return RedirectResponse(
-        f"{FRONTEND_URL}/dashboard?access={access}&refresh={refresh}"
-    )
+    f"{FRONTEND_URL}/dashboard?access={access}&refresh={refresh}"
+)
