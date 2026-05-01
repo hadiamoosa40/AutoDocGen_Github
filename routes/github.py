@@ -60,3 +60,16 @@ def refresh_repos():
         "installed": True,
         "repos": repos
     }
+@router.get("/github/repo/{owner}/{repo}/contents")
+def repo_contents(owner: str, repo: str):
+
+    user = users_collection.find_one({"github_token": {"$exists": True}})
+
+    token = get_installation_token(user["installation_id"])
+
+    res = requests.get(
+        f"https://api.github.com/repos/{owner}/{repo}/contents",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    return res.json()
