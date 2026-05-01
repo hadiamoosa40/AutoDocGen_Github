@@ -1,5 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from db import users_collection
+from services.github_service import get_installation_token
+import requests
 from services.github_service import get_repos, get_repo
 
 router = APIRouter()
@@ -7,14 +9,13 @@ router = APIRouter()
 
 # helper: get current user
 def get_current_user():
-    return users_collection.find_one({"github_token": {"$exists": True}})
+    user = users_collection.find_one()
 
 
 # ✅ GET ALL REPOS (AUTO SHOW AFTER INSTALL)
 @router.get("/github/repos")
 def repos():
-
-    user = users_collection.find_one({"github_token": {"$exists": True}})
+    user = users_collection.find_one()
 
     if not user:
         return {"error": "Not logged in"}
@@ -49,7 +50,7 @@ def repo(owner: str, repo: str):
 @router.get("/github/refresh")
 def refresh_repos():
 
-    user = users_collection.find_one({"github_token": {"$exists": True}})
+    user = users_collection.find_one())
 
     if not user or "installation_id" not in user:
         return {"installed": False, "repos": []}
@@ -63,7 +64,7 @@ def refresh_repos():
 @router.get("/github/repo/{owner}/{repo}/contents")
 def repo_contents(owner: str, repo: str):
 
-    user = users_collection.find_one({"github_token": {"$exists": True}})
+    user = users_collection.find_one()
 
     token = get_installation_token(user["installation_id"])
 

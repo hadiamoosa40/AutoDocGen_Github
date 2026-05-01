@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from routes import github_app, github, webhook, websocket
 from fastapi.middleware.cors import CORSMiddleware
 from routes import dashboard
-
+from routes import auth
 import os
 
 app = FastAPI()
@@ -20,3 +20,4 @@ app.include_router(github.router)
 app.include_router(webhook.router)
 app.include_router(websocket.router)
 app.include_router(dashboard.router)
+app.include_router(auth.router)
