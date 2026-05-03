@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 import requests
 import os
 from dotenv import load_dotenv
@@ -13,17 +13,54 @@ user_tokens = {}
 @router.post("/github/store-token")
 def store_token(token: str, username: str):
     """Store user token"""
+    # Extract user info from token if needed
+    try:
+        # Get user info from GitHub to verify
+        response = requests.get(
+            "https://api.github.com/user",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10
+        )
+        if response.status_code == 200:
+            user_data = response.json()
+            username = user_data.get("login")
+            print(f"👤 Verified user: {username}")
+    except:
+        pass
+    
     user_tokens[username] = {
         "token": token,
         "username": username
     }
     print(f"💾 Token stored for user: {username}")
     print(f"📊 Total users: {len(user_tokens)}")
-    return {"success": True}
+    return {"success": True, "username": username}
 
 @router.get("/github/repos")
-def get_repos(username: str):
-    """Get all repositories for the user"""
+def get_repos(username: str = None, request: Request = None):
+    """Get all repositories for the user - username is now optional"""
+    print(f"📚 Getting repos request received")
+    
+    # If username not provided, try to get from token in header
+    if not username and request:
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.replace("Bearer ", "")
+            # Find user by token
+            for stored_username, user_data in user_tokens.items():
+                if user_data["token"] == token:
+                    username = stored_username
+                    print(f"🔍 Found username from token: {username}")
+                    break
+    
+    if not username:
+        print("❌ No username provided in request")
+        return {
+            "error": "Username required",
+            "installed": False,
+            "repositories": []
+        }
+    
     print(f"📚 Getting repos for user: {username}")
     
     # Get user's stored token
@@ -45,7 +82,7 @@ def get_repos(username: str):
         response = requests.get(
             "https://api.github.com/user/repos",
             headers={"Authorization": f"Bearer {github_token}"},
-            params={"per_page": 100, "sort": "updated"},
+            params={"per_page": 100, "sort": "updated", "direction": "desc"},
             timeout=10
         )
         
@@ -53,7 +90,29 @@ def get_repos(username: str):
             repos = response.json()
             print(f"✅ Found {len(repos)} repositories for {username}")
             
+            # Format repository data
+            formatted_repos = []
+            for repo in repos:
+                formatted_repos.append({
+                    "id": repo.get("id"),
+                    "name": repo.get("name"),
+                    "full_name": repo.get("full_name"),
+                    "description": repo.get("description"),
+                    "html_url": repo.get("html_url"),
+                    "stargazers_count": repo.get("stargazers_count", 0),
+                    "forks_count": repo.get("forks_count", 0),
+                    "open_issues_count": repo.get("open_issues_count", 0),
+                    "language": repo.get("language"),
+                    "owner": {
+                        "login": repo.get("owner", {}).get("login"),
+                        "avatar_url": repo.get("owner", {}).get("avatar_url")
+                    },
+                    "updated_at": repo.get("updated_at"),
+                    "pushed_at": repo.get("pushed_at")
+                })
+            
             # Check if GitHub App is installed (optional)
+            has_installation = False
             try:
                 install_response = requests.get(
                     "https://api.github.com/user/installations",
@@ -63,18 +122,20 @@ def get_repos(username: str):
                     },
                     timeout=10
                 )
-                installations = install_response.json()
-                has_installation = len(installations.get("installations", [])) > 0
+                if install_response.status_code == 200:
+                    installations = install_response.json()
+                    has_installation = len(installations.get("installations", [])) > 0
             except:
-                has_installation = False
+                pass
             
             return {
                 "installed": has_installation,
-                "repositories": repos,
-                "username": username
+                "repositories": formatted_repos,
+                "username": username,
+                "total_count": len(formatted_repos)
             }
         else:
-            print(f"❌ Failed to get repos: {response.status_code}")
+            print(f"❌ Failed to get repos: {response.status_code} - {response.text}")
             return {
                 "installed": False,
                 "repositories": [],
@@ -91,11 +152,27 @@ def get_repos(username: str):
         }
 
 @router.get("/github/repo/{owner}/{repo_name}")
-def get_repo_data(owner: str, repo_name: str, username: str):
+def get_repo_data(owner: str, repo_name: str, username: str = None, request: Request = None):
     """Get specific repository data and print to backend"""
     print(f"\n{'='*70}")
     print(f"🔥 FETCHING DATA FOR REPOSITORY: {owner}/{repo_name}")
     print(f"{'='*70}")
+    
+    # If username not provided, try to get from token in header
+    if not username and request:
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.replace("Bearer ", "")
+            # Find user by token
+            for stored_username, user_data in user_tokens.items():
+                if user_data["token"] == token:
+                    username = stored_username
+                    print(f"🔍 Found username from token: {username}")
+                    break
+    
+    if not username:
+        print("❌ No username provided")
+        raise HTTPException(400, "Username required")
     
     # Get user's stored token
     user_data = user_tokens.get(username)
@@ -144,9 +221,8 @@ def get_repo_data(owner: str, repo_name: str, username: str):
             topics = repo_data['topics']
             print(f"   • Topics: {', '.join(topics[:5])}")
         
-        # Get additional stats
+        # Get languages
         try:
-            # Get languages
             lang_response = requests.get(
                 f"https://api.github.com/repos/{owner}/{repo_name}/languages",
                 headers={"Authorization": f"Bearer {github_token}"},
@@ -154,7 +230,20 @@ def get_repo_data(owner: str, repo_name: str, username: str):
             )
             if lang_response.status_code == 200:
                 languages = lang_response.json()
-                print(f"   • Languages: {', '.join(list(languages.keys())[:5])}")
+                if languages:
+                    print(f"   • Languages: {', '.join(list(languages.keys())[:5])}")
+        except:
+            pass
+        
+        # Get README
+        try:
+            readme_response = requests.get(
+                f"https://api.github.com/repos/{owner}/{repo_name}/readme",
+                headers={"Authorization": f"Bearer {github_token}"},
+                timeout=10
+            )
+            if readme_response.status_code == 200:
+                print(f"   • Has README: ✅ Yes")
         except:
             pass
         
@@ -189,10 +278,13 @@ def github_callback(installation_id: int, username: str = None):
     print(f"✅ GitHub App installed: installation_id={installation_id}")
     return {"success": True, "message": "App installed successfully"}
 
-@router.get("/github/user-info")
-def get_user_info(username: str):
-    """Get user info"""
-    user_data = user_tokens.get(username)
-    if user_data:
-        return {"authenticated": True, "username": username}
+@router.get("/github/current-user")
+def get_current_user(request: Request):
+    """Get current user from token"""
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.replace("Bearer ", "")
+        for username, user_data in user_tokens.items():
+            if user_data["token"] == token:
+                return {"authenticated": True, "username": username}
     return {"authenticated": False}
