@@ -1,17 +1,17 @@
-# middlewares/auth_middleware.py
-
-from fastapi import Header, HTTPException
+from fastapi import Header, HTTPException, Depends
 from utils.jwt import verify_token
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
-def get_current_user(authorization: str = Header(None)):
+security = HTTPBearer()
 
-    if not authorization:
-        raise HTTPException(401, "No token")
-
-    token = authorization.split(" ")[1]
-
+def get_current_user(authorization: HTTPAuthorizationCredentials = Depends(security)):
     try:
+        token = authorization.credentials
         payload = verify_token(token)
+        
+        if payload.get("type") != "access":
+            raise HTTPException(401, "Invalid token type")
+            
         return payload
-    except:
-        raise HTTPException(401, "Invalid token")
+    except Exception as e:
+        raise HTTPException(401, str(e))

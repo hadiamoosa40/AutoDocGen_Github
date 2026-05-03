@@ -1,76 +1,94 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from db import users_collection
-from services.github_service import get_installation_token
-import requests
-from services.github_service import get_repos, get_repo
+from services.github_service import get_user_repos, get_repo_data, get_repo_contents
+from middlewares.auth_middleware import get_current_user
 
 router = APIRouter()
 
+@router.get("/github/installations")
+def check_installation(current_user: dict = Depends(get_current_user)):
+    """Check if GitHub App is installed"""
+    user_id = current_user.get("user_id")
+    db_user = users_collection.find_one({"github_id": user_id})
+    
+    if not db_user:
+        raise HTTPException(404, "User not found")
+    
+    return {
+        "installed": bool(db_user.get("installation_id")),
+        "installation_id": db_user.get("installation_id")
+    }
 
-# helper: get current user
-def get_current_user():
-    user = users_collection.find_one()
-
-
-# ✅ GET ALL REPOS (AUTO SHOW AFTER INSTALL)
-@router.get("/github/repos")
-def repos():
-    user = users_collection.find_one()
-
-    if not user:
-        return {"error": "Not logged in"}
-
-    if "installation_id" not in user:
-        return {"installed": False, "repos": []}
-
+@router.get("/github/repositories")
+def get_repositories(current_user: dict = Depends(get_current_user)):
+    """Get all repositories for the user"""
+    user_id = current_user.get("user_id")
+    db_user = users_collection.find_one({"github_id": user_id})
+    
+    if not db_user:
+        raise HTTPException(404, "User not found")
+    
+    installation_id = db_user.get("installation_id")
+    
+    if not installation_id:
+        return {
+            "installed": False,
+            "repositories": [],
+            "message": "GitHub App not installed. Please install the app first."
+        }
+    
+    repositories = get_user_repos(installation_id)
+    
     return {
         "installed": True,
-        "repos": get_repos(user["installation_id"])
+        "repositories": repositories
     }
 
-# ✅ CLICK REPO → FETCH DATA
-@router.get("/github/repo/{owner}/{repo}")
-def repo(owner: str, repo: str):
-
-    user = get_current_user()
-
-    if not user:
-        raise HTTPException(401, "User not logged in")
-
-    data = get_repo(user["installation_id"], owner, repo)
-
-    # 🔥 YOUR REQUIREMENT: print in backend terminal
-    print("🔥 DATA TAKEN FROM REPO:")
-    print(data)
-
+@router.get("/github/repository/{owner}/{repo_name}")
+def get_repository(owner: str, repo_name: str, current_user: dict = Depends(get_current_user)):
+    """Get detailed data for a specific repository"""
+    user_id = current_user.get("user_id")
+    db_user = users_collection.find_one({"github_id": user_id})
+    
+    if not db_user:
+        raise HTTPException(404, "User not found")
+    
+    installation_id = db_user.get("installation_id")
+    
+    if not installation_id:
+        raise HTTPException(400, "GitHub App not installed")
+    
+    print(f"\n🚀 Fetching data for repository: {owner}/{repo_name}")
+    
+    repo_data = get_repo_data(installation_id, owner, repo_name)
+    
+    if not repo_data:
+        raise HTTPException(404, f"Repository {owner}/{repo_name} not found")
+    
     return {
-        "message": "data fetched correctly",
-        "repo": data
+        "success": True,
+        "message": f"Data fetched successfully for {owner}/{repo_name}",
+        "data": repo_data
     }
-@router.get("/github/refresh")
-def refresh_repos():
 
-    user = users_collection.find_one()
-
-    if not user or "installation_id" not in user:
-        return {"installed": False, "repos": []}
-
-    repos = get_repos(user["installation_id"])
-
+@router.get("/github/repository/{owner}/{repo_name}/contents")
+def get_repository_contents(owner: str, repo_name: str, path: str = "", current_user: dict = Depends(get_current_user)):
+    """Get contents of a repository"""
+    user_id = current_user.get("user_id")
+    db_user = users_collection.find_one({"github_id": user_id})
+    
+    if not db_user:
+        raise HTTPException(404, "User not found")
+    
+    installation_id = db_user.get("installation_id")
+    
+    if not installation_id:
+        raise HTTPException(400, "GitHub App not installed")
+    
+    contents = get_repo_contents(installation_id, owner, repo_name, path)
+    
     return {
-        "installed": True,
-        "repos": repos
+        "success": True,
+        "path": path,
+        "contents": contents
     }
-@router.get("/github/repo/{owner}/{repo}/contents")
-def repo_contents(owner: str, repo: str):
-
-    user = users_collection.find_one()
-
-    token = get_installation_token(user["installation_id"])
-
-    res = requests.get(
-        f"https://api.github.com/repos/{owner}/{repo}/contents",
-        headers={"Authorization": f"Bearer {token}"}
-    )
-
-    return res.json()

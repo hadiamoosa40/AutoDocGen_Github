@@ -1,34 +1,32 @@
-from jose import jwt
+import jwt
 from datetime import datetime, timedelta
 import os
 from dotenv import load_dotenv
 
-load_dotenv() 
-SECRET = os.getenv("JWT_SECRET")
+load_dotenv()
 
-if not SECRET:
-    raise Exception("JWT_SECRET not set in environment variables")
-EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRES_IN", 15))
-ALGO = "HS256"
-
+SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-change-this")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+REFRESH_TOKEN_EXPIRE_DAYS = 7
 
 def create_access_token(data: dict):
-    payload = data.copy()
-    payload.update({
-        "exp": datetime.utcnow() + timedelta(minutes=EXPIRE_MINUTES),
-        "type": "access"
-    })
-    return jwt.encode(payload, SECRET, algorithm=ALGO)
-
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire, "type": "access"})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 def create_refresh_token(data: dict):
-    payload = data.copy()
-    payload.update({
-        "exp": datetime.utcnow() + timedelta(days=7),
-        "type": "refresh"
-    })
-    return jwt.encode(payload, SECRET, algorithm=ALGO)
-
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    to_encode.update({"exp": expire, "type": "refresh"})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 def verify_token(token: str):
-    return jwt.decode(token, SECRET, algorithms=[ALGO])
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return payload
+    except jwt.ExpiredSignatureError:
+        raise Exception("Token expired")
+    except jwt.InvalidTokenError:
+        raise Exception("Invalid token")
