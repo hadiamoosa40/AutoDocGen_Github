@@ -1,29 +1,32 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routes import auth, github_app, github, webhook, websocket, dashboard
 import os
 from dotenv import load_dotenv
 
+# Load environment variables
 load_dotenv()
 
-app = FastAPI(title="GitHub Integration App")
+# Import routers
+from routes import auth, github, webhook
+
+# Create FastAPI app
+app = FastAPI()
 
 # CORS Configuration
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[os.getenv("FRONTEND_URL", "http://localhost:5173"), "http://localhost:5173"],
+    allow_origins=[FRONTEND_URL, "http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Include all routers
+# Include routers
 app.include_router(auth.router)
-app.include_router(github_app.router)
 app.include_router(github.router)
 app.include_router(webhook.router)
-app.include_router(websocket.router)
-app.include_router(dashboard.router)
 
 @app.get("/")
 def root():
@@ -32,3 +35,8 @@ def root():
 @app.get("/health")
 def health():
     return {"status": "healthy"}
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
