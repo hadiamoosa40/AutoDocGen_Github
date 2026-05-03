@@ -22,7 +22,7 @@ def github_login():
         raise HTTPException(500, "GitHub Client ID not configured")
     
     github_url = f"https://github.com/login/oauth/authorize?client_id={CLIENT_ID}&scope=repo,user,read:org"
-    print(f"🚀 Redirecting to GitHub OAuth")
+    print(f"🚀 Redirecting to: {github_url}")
     return RedirectResponse(github_url)
 
 @router.get("/auth/github/callback")
@@ -34,8 +34,8 @@ def github_callback(code: str):
         print("❌ GitHub credentials missing")
         raise HTTPException(500, "GitHub credentials not configured")
     
-    # Exchange code for token
     try:
+        # Exchange code for token
         token_response = requests.post(
             "https://github.com/login/oauth/access_token",
             headers={"Accept": "application/json"},
@@ -74,12 +74,20 @@ def github_callback(code: str):
         
         print(f"👤 User authenticated: {username} (ID: {user_id})")
         
-        # Create a simple token (since JWT might have issues)
-        simple_token = f"{user_id}_{username}_{github_token[:50]}"
+        # Create a simple token
+        simple_token = github_token
         
-        # Redirect to frontend
+        # Store user info (in memory for now)
+        from routes.github import user_tokens
+        user_tokens[username] = {
+            "token": github_token,
+            "user_id": user_id,
+            "username": username
+        }
+        
+        # Redirect to frontend with token
         redirect_url = f"{FRONTEND_URL}/dashboard?token={simple_token}&username={username}"
-        print(f"✅ Authentication successful, redirecting to: {redirect_url}")
+        print(f"✅ Authentication successful, redirecting to dashboard")
         
         return RedirectResponse(redirect_url)
         
