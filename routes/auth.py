@@ -1,12 +1,12 @@
-from dotenv import load_dotenv
-load_dotenv()
-
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import RedirectResponse
-from utils.jwt import create_access_token, create_refresh_token
-from db import users_collection
+from utils.jwt import create_token
+from db import save_user, get_user
 import requests
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 router = APIRouter()
 
@@ -16,25 +16,20 @@ FRONTEND_URL = os.getenv("FRONTEND_URL")
 
 @router.get("/auth/github/login")
 def github_login():
-    """Step 1: Redirect to GitHub OAuth page"""
+    """Redirect to GitHub OAuth"""
     if not CLIENT_ID:
-        raise HTTPException(500, "Missing GITHUB_CLIENT_ID")
+        raise HTTPException(500, "GitHub Client ID not configured")
     
-    github_oauth_url = (
-        "https://github.com/login/oauth/authorize"
-        f"?client_id={CLIENT_ID}"
-        "&scope=repo,user,read:org"
-    )
-    
-    print(f"🚀 Redirecting to GitHub OAuth: {github_oauth_url}")
-    return RedirectResponse(github_oauth_url)
+    github_url = f"https://github.com/login/oauth/authorize?client_id={CLIENT_ID}&scope=repo,user,read:org"
+    print(f"🚀 Redirecting to GitHub OAuth")
+    return RedirectResponse(github_url)
 
 @router.get("/auth/github/callback")
 def github_callback(code: str):
-    """Step 2: Handle GitHub OAuth callback"""
-    print(f"🔥 GitHub callback received with code: {code[:20]}...")
+    """Handle OAuth callback"""
+    print(f"📞 Callback received")
     
-    # Exchange code for access token
+    # Exchange code for token
     token_response = requests.post(
         "https://github.com/login/oauth/access_token",
         headers={"Accept": "application/json"},
@@ -42,29 +37,27 @@ def github_callback(code: str):
             "client_id": CLIENT_ID,
             "client_secret": CLIENT_SECRET,
             "code": code,
-        },
+        }
     )
     
     token_data = token_response.json()
-    print(f"📝 Token response received")
     
     if "access_token" not in token_data:
-        print(f"❌ Failed to get access token: {token_data}")
-        raise HTTPException(400, f"Failed to get access token: {token_data}")
+        print(f"❌ Failed to get token: {token_data}")
+        raise HTTPException(400, "Failed to get access token")
     
     github_token = token_data["access_token"]
     
-    # Get user info from GitHub
+    # Get user info
     user_response = requests.get(
         "https://api.github.com/user",
         headers={"Authorization": f"Bearer {github_token}"}
     )
     
     user_data = user_response.json()
-    print(f"👤 GitHub user: {user_data.get('login')} (ID: {user_data.get('id')})")
     
     if "id" not in user_data:
-        print(f"❌ Failed to get user data: {user_data}")
+        print(f"❌ Failed to get user: {user_data}")
         raise HTTPException(400, "Failed to get user data")
     
     # Get user's installations
@@ -81,47 +74,28 @@ def github_callback(code: str):
     
     if installations.get("installations"):
         installation_id = installations["installations"][0]["id"]
-        print(f"📦 Found installation ID: {installation_id}")
-    else:
-        print("⚠️ No GitHub App installation found")
+        print(f"📦 Found installation: {installation_id}")
     
-    # Save user to database
-    users_collection.update_one(
-        {"github_id": user_data["id"]},
-        {
-            "$set": {
-                "github_id": user_data["id"],
-                "username": user_data["login"],
-                "name": user_data.get("name", ""),
-                "email": user_data.get("email", ""),
-                "avatar_url": user_data["avatar_url"],
-                "github_token": github_token,
-                "installation_id": installation_id,
-                "updated_at": requests.get("https://api.github.com/user").elapsed.total_seconds()
-            }
-        },
-        upsert=True
-    )
+    # Save user
+    user_info = {
+        "github_id": user_data["id"],
+        "username": user_data["login"],
+        "name": user_data.get("name", ""),
+        "avatar_url": user_data["avatar_url"],
+        "github_token": github_token,
+        "installation_id": installation_id
+    }
     
-    # Create JWT tokens
-    access_token = create_access_token({"user_id": user_data["id"], "username": user_data["login"]})
-    refresh_token = create_refresh_token({"user_id": user_data["id"]})
+    save_user(user_data["id"], user_info)
     
-    print(f"✅ User authenticated successfully. Redirecting to frontend...")
+    # Create JWT
+    jwt_token = create_token({
+        "user_id": user_data["id"],
+        "username": user_data["login"]
+    })
     
-    # Redirect to frontend with tokens
-    redirect_url = f"{FRONTEND_URL}/dashboard?access_token={access_token}&refresh_token={refresh_token}"
+    # Redirect to frontend
+    redirect_url = f"{FRONTEND_URL}/dashboard?token={jwt_token}"
+    print(f"✅ Authentication successful, redirecting")
+    
     return RedirectResponse(redirect_url)
-
-@router.post("/auth/refresh")
-def refresh_token(refresh_token: str):
-    """Step 3: Refresh access token"""
-    try:
-        payload = verify_token(refresh_token)
-        if payload.get("type") != "refresh":
-            raise HTTPException(401, "Invalid token type")
-        
-        new_access_token = create_access_token({"user_id": payload["user_id"]})
-        return {"access_token": new_access_token}
-    except Exception as e:
-        raise HTTPException(401, str(e))
