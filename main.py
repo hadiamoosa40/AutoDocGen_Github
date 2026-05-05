@@ -1,7 +1,6 @@
 from fastapi import FastAPI, WebSocket
 from routes import auth, repos, webhook
-from websockets.manager import manager
-
+from ws.manager import manager
 app = FastAPI()
 
 app.include_router(auth.router)
