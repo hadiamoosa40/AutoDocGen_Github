@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Request, Header, HTTPException
 from utils.crypto import verify_signature
-from websockets.manager import manager
+from ws.manager import manager
 from config import GITHUB_WEBHOOK_SECRET
 
 router = APIRouter()
