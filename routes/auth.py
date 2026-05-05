@@ -1,96 +1,43 @@
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import RedirectResponse
-import requests
+from services.auth_service import (
+    exchange_code_for_token,
+    get_github_user,
+    save_user
+)
+from utils.jwt import create_token
 import os
-from dotenv import load_dotenv
-
-load_dotenv()
 
 router = APIRouter()
 
-CLIENT_ID = os.getenv("GITHUB_CLIENT_ID")
-CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET")
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+FRONTEND = os.getenv("FRONTEND_URL")
+
 
 @router.get("/auth/github/login")
-def github_login():
-    """Redirect to GitHub OAuth"""
-    print("🔐 Login endpoint called")
-    
-    if not CLIENT_ID:
-        print("❌ CLIENT_ID missing")
-        raise HTTPException(500, "GitHub Client ID not configured")
-    
-    github_url = f"https://github.com/login/oauth/authorize?client_id={CLIENT_ID}&scope=repo,user,read:org"
-    print(f"🚀 Redirecting to: {github_url}")
-    return RedirectResponse(github_url)
+def login():
+    return RedirectResponse(
+        f"https://github.com/login/oauth/authorize"
+        f"?client_id={os.getenv('GITHUB_CLIENT_ID')}&scope=repo"
+    )
+
 
 @router.get("/auth/github/callback")
-def github_callback(code: str):
-    """Handle OAuth callback"""
-    print(f"📞 Callback received with code: {code[:20]}...")
-    
-    if not CLIENT_ID or not CLIENT_SECRET:
-        print("❌ GitHub credentials missing")
-        raise HTTPException(500, "GitHub credentials not configured")
-    
-    try:
-        # Exchange code for token
-        token_response = requests.post(
-            "https://github.com/login/oauth/access_token",
-            headers={"Accept": "application/json"},
-            data={
-                "client_id": CLIENT_ID,
-                "client_secret": CLIENT_SECRET,
-                "code": code,
-            },
-            timeout=10
-        )
-        
-        token_data = token_response.json()
-        print(f"📝 Token response received")
-        
-        if "access_token" not in token_data:
-            print(f"❌ Failed to get token: {token_data}")
-            raise HTTPException(400, "Failed to get access token")
-        
-        github_token = token_data["access_token"]
-        
-        # Get user info
-        user_response = requests.get(
-            "https://api.github.com/user",
-            headers={"Authorization": f"Bearer {github_token}"},
-            timeout=10
-        )
-        
-        user_data = user_response.json()
-        
-        if "id" not in user_data:
-            print(f"❌ Failed to get user: {user_data}")
-            raise HTTPException(400, "Failed to get user data")
-        
-        username = user_data.get("login")
-        user_id = user_data["id"]
-        
-        print(f"👤 User authenticated: {username} (ID: {user_id})")
-        
-        # Create a simple token
-        simple_token = github_token
-        
-        # Store user info (in memory for now)
-        from routes.github import user_tokens
-        user_tokens[username] = {
-            "token": github_token,
-            "user_id": user_id,
-            "username": username
-        }
-        
-        # Redirect to frontend with token
-        redirect_url = f"{FRONTEND_URL}/dashboard?token={simple_token}&username={username}"
-        print(f"✅ Authentication successful, redirecting to dashboard")
-        
-        return RedirectResponse(redirect_url)
-        
-    except Exception as e:
-        print(f"❌ Error in callback: {str(e)}")
-        raise HTTPException(500, f"Authentication error: {str(e)}")
+def callback(code: str):
+
+    token = exchange_code_for_token(code)
+
+    if not token:
+        raise HTTPException(400, "OAuth failed")
+
+    user = get_github_user(token)
+
+    save_user(user, token)
+
+    jwt_token = create_token({
+        "github_id": user["id"],
+        "username": user["login"]
+    })
+
+    return RedirectResponse(
+        f"{FRONTEND}/dashboard?token={jwt_token}"
+    )
