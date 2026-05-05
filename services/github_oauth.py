@@ -10,7 +10,6 @@ async def exchange_code(code: str):
                 "client_id": GITHUB_CLIENT_ID,
                 "client_secret": GITHUB_CLIENT_SECRET,
                 "code": code,
-                "redirect_uri": GITHUB_REDIRECT_URI,  # IMPORTANT FIX
             },
         )
         data = res.json()
