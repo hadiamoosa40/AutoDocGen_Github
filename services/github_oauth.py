@@ -19,6 +19,9 @@ async def get_user(token: str):
     async with httpx.AsyncClient() as client:
         res = await client.get(
             "https://api.github.com/user",
-            headers={"Authorization": f"Bearer {token}"},
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.github+json"
+            },
         )
         return res.json()
