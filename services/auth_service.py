@@ -1,9 +1,8 @@
 import requests
 import os
-from db import users_collection
 
-CLIENT_ID = os.getenv("GITHUB_CLIENT_ID")
-CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET")
+GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID")
+GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET")
 
 
 def exchange_code_for_token(code: str):
@@ -11,8 +10,8 @@ def exchange_code_for_token(code: str):
         "https://github.com/login/oauth/access_token",
         headers={"Accept": "application/json"},
         data={
-            "client_id": CLIENT_ID,
-            "client_secret": CLIENT_SECRET,
+            "client_id": GITHUB_CLIENT_ID,
+            "client_secret": GITHUB_CLIENT_SECRET,
             "code": code,
         },
     )
@@ -25,18 +24,3 @@ def get_github_user(token: str):
         headers={"Authorization": f"Bearer {token}"}
     )
     return res.json()
-
-
-def save_user(user, token):
-    return users_collection.update_one(
-        {"github_id": user["id"]},
-        {
-            "$set": {
-                "github_id": user["id"],
-                "username": user["login"],
-                "avatar": user["avatar_url"],
-                "github_token": token
-            }
-        },
-        upsert=True
-    )

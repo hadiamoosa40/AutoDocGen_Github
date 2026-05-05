@@ -13,4 +13,3 @@ client = MongoClient(MONGO_URI)
 db = client["github_integration"]
 users_collection = db["users"]
 tokens_collection = db["tokens"]
-

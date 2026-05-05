@@ -1,25 +1,23 @@
 from fastapi import FastAPI
+from routes import github_app, github, webhook, websocket
 from fastapi.middleware.cors import CORSMiddleware
-from routes import auth, github, github_app, webhook
+from routes import dashboard
+from routes import auth
+import os
 
 app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-     allow_origins=[
-        "http://localhost:5173",
-    ],
+    allow_origins=[os.getenv("FRONTEND_URL")],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-app.include_router(auth.router)
-app.include_router(github.router)
 app.include_router(github_app.router)
+app.include_router(github.router)
 app.include_router(webhook.router)
-
-
-@app.get("/")
-def root():
-    return {"status": "AutoDocGen running"}
+app.include_router(websocket.router)
+app.include_router(dashboard.router)
+app.include_router(auth.router)
