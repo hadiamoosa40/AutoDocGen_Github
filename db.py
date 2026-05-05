@@ -1,15 +1,7 @@
-import os
-from pymongo import MongoClient
-from dotenv import load_dotenv
+from motor.motor_asyncio import AsyncIOMotorClient
+from config import MONGODB_URI
 
-load_dotenv()
+client = AsyncIOMotorClient(MONGODB_URI)
+db = client.app
 
-MONGO_URI = os.getenv("MONGODB_URI")
-
-if not MONGO_URI:
-    raise ValueError("MONGODB_URI environment variable is not set")
-
-client = MongoClient(MONGO_URI)
-db = client["github_integration"]
-users_collection = db["users"]
-tokens_collection = db["tokens"]
+users = db.users

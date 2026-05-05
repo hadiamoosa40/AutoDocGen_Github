@@ -1,23 +1,19 @@
-from fastapi import FastAPI
-from routes import github_app, github, webhook, websocket
-from fastapi.middleware.cors import CORSMiddleware
-from routes import dashboard
-from routes import auth
-import os
+from fastapi import FastAPI, WebSocket
+from routes import auth, repos, webhook
+from websockets.manager import manager
 
 app = FastAPI()
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[os.getenv("FRONTEND_URL")],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-app.include_router(github_app.router)
-app.include_router(github.router)
-app.include_router(webhook.router)
-app.include_router(websocket.router)
-app.include_router(dashboard.router)
 app.include_router(auth.router)
+app.include_router(repos.router)
+app.include_router(webhook.router)
+
+
+@app.websocket("/ws")
+async def websocket_endpoint(ws: WebSocket):
+    await manager.connect(ws)
+    try:
+        while True:
+            await ws.receive_text()
+    except:
+        manager.disconnect(ws)

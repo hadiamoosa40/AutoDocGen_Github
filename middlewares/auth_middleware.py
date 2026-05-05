@@ -1,17 +1,11 @@
-# middlewares/auth_middleware.py
-
 from fastapi import Header, HTTPException
-from utils.jwt import verify_token
+from utils.jwt import decode_token
 
-def get_current_user(authorization: str = Header(None)):
-
+async def get_current_user(authorization: str = Header(None)):
     if not authorization:
-        raise HTTPException(401, "No token")
-
-    token = authorization.split(" ")[1]
+        raise HTTPException(status_code=401, detail="Missing token")
 
     try:
-        payload = verify_token(token)
-        return payload
+        return decode_token(authorization)
     except:
-        raise HTTPException(401, "Invalid token")
+        raise HTTPException(status_code=401, detail="Invalid token")
