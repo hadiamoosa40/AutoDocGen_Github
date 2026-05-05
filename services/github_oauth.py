@@ -1,5 +1,5 @@
 import httpx
-from config import GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET
+from config import GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, GITHUB_REDIRECT_URI
 
 async def exchange_code(code: str):
     async with httpx.AsyncClient() as client:
@@ -10,9 +10,12 @@ async def exchange_code(code: str):
                 "client_id": GITHUB_CLIENT_ID,
                 "client_secret": GITHUB_CLIENT_SECRET,
                 "code": code,
+                "redirect_uri": GITHUB_REDIRECT_URI,  # IMPORTANT FIX
             },
         )
-        return res.json().get("access_token")
+        data = res.json()
+        print("TOKEN RESPONSE:", data)
+        return data.get("access_token")
 
 
 async def get_user(token: str):
@@ -21,7 +24,9 @@ async def get_user(token: str):
             "https://api.github.com/user",
             headers={
                 "Authorization": f"Bearer {token}",
-                "Accept": "application/vnd.github+json"
+                "Accept": "application/vnd.github+json",
             },
         )
-        return res.json()
+        data = res.json()
+        print("USER RESPONSE:", data)
+        return data
