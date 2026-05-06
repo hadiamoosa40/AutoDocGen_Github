@@ -1,18 +1,23 @@
+import sys
 import os
+
+# Ensure the app directory is always on sys.path regardless of how
+# Railway / uvicorn sets the working directory.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
+
+load_dotenv()
 
 from db.database import connect_db, disconnect_db
 from routes.auth import router as auth_router
 from routes.repos import router as repos_router
 from routes.webhooks import router as webhooks_router
 from routes.ws import router as ws_router
-from middlewares.auth_middleware import AuthMiddleware
 from middlewares.rate_limiter import RateLimitMiddleware
-
-load_dotenv()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
