@@ -1,8 +1,8 @@
 from fastapi import APIRouter, HTTPException, Request, Query
 from fastapi.responses import RedirectResponse
-from app.utils.github_client import github_client
-from app.services.auth_service import AuthService
-from app.db import get_collection
+from utils.github_client import github_client
+from services.auth_service import AuthService
+from db import get_collection
 import os
 from typing import Optional
 
