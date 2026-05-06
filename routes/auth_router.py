@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import RedirectResponse
-from fastapi.security import HTTPBearer
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from services.github_service import github_service
 from services.token_service import token_service
 from utils.jwt_utils import create_access_token, create_refresh_token, verify_token
@@ -23,51 +23,56 @@ async def github_login():
 @router.get("/github/callback")
 async def github_callback(code: str):
     """Handle GitHub OAuth callback"""
-    # Exchange code for access token
-    access_token = await github_service.exchange_code_for_token(code)
-    if not access_token:
-        raise HTTPException(400, "Failed to get access token")
+    try:
+        # Exchange code for access token
+        access_token = await github_service.exchange_code_for_token(code)
+        if not access_token:
+            raise HTTPException(400, "Failed to get access token")
+        
+        # Get GitHub user
+        user_data = await github_service.get_github_user(access_token)
+        if not user_data:
+            raise HTTPException(400, "Failed to get user data")
+        
+        # Save or update user
+        users_collection = await get_users_collection()
+        await users_collection.update_one(
+            {"github_id": user_data["id"]},
+            {
+                "$set": {
+                    "username": user_data["login"],
+                    "email": user_data.get("email"),
+                    "avatar_url": user_data["avatar_url"],
+                    "name": user_data.get("name"),
+                    "github_token": access_token,
+                    "updated_at": datetime.utcnow()
+                }
+            },
+            upsert=True
+        )
+        
+        # Create JWT tokens
+        jwt_access_token = create_access_token({
+            "user_id": user_data["id"],
+            "username": user_data["login"]
+        })
+        jwt_refresh_token = create_refresh_token({
+            "user_id": user_data["id"],
+            "username": user_data["login"]
+        })
+        
+        # Save tokens
+        await token_service.save_user_token(user_data["id"], jwt_access_token, jwt_refresh_token)
+        
+        # Redirect to frontend
+        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+        redirect_url = f"{frontend_url}/dashboard?token={jwt_access_token}&refresh={jwt_refresh_token}"
+        
+        return RedirectResponse(redirect_url)
     
-    # Get GitHub user
-    user_data = await github_service.get_github_user(access_token)
-    if not user_data:
-        raise HTTPException(400, "Failed to get user data")
-    
-    # Save or update user
-    users_collection = await get_users_collection()
-    await users_collection.update_one(
-        {"github_id": user_data["id"]},
-        {
-            "$set": {
-                "username": user_data["login"],
-                "email": user_data.get("email"),
-                "avatar_url": user_data["avatar_url"],
-                "name": user_data.get("name"),
-                "github_token": access_token,
-                "updated_at": user_data["updated_at"] if "updated_at" in user_data else None
-            }
-        },
-        upsert=True
-    )
-    
-    # Create JWT tokens
-    jwt_access_token = create_access_token({
-        "user_id": user_data["id"],
-        "username": user_data["login"]
-    })
-    jwt_refresh_token = create_refresh_token({
-        "user_id": user_data["id"],
-        "username": user_data["login"]
-    })
-    
-    # Save tokens
-    await token_service.save_user_token(user_data["id"], jwt_access_token, jwt_refresh_token)
-    
-    # Redirect to frontend
-    frontend_url = os.getenv("FRONTEND_URL")
-    redirect_url = f"{frontend_url}/dashboard?token={jwt_access_token}&refresh={jwt_refresh_token}"
-    
-    return RedirectResponse(redirect_url)
+    except Exception as e:
+        print(f"Error in callback: {e}")
+        raise HTTPException(500, f"Authentication error: {str(e)}")
 
 @router.post("/refresh")
 async def refresh_token(refresh_token: str):
@@ -78,7 +83,15 @@ async def refresh_token(refresh_token: str):
     return new_tokens
 
 @router.get("/me")
-async def get_current_user(user: dict = Depends(security)):
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """Get current authenticated user"""
-    # This will be handled by the middleware
+    token = credentials.credentials
+    user = await token_service.get_user_from_token(token)
+    if not user:
+        raise HTTPException(401, "Invalid token")
+    
+    # Convert ObjectId to string for JSON serialization
+    user["_id"] = str(user["_id"])
     return user
+
+from datetime import datetime

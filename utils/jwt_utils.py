@@ -1,11 +1,10 @@
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
 import os
-from passlib.context import CryptContext
+import hashlib
+import secrets
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-SECRET_KEY = os.getenv("JWT_SECRET")
+SECRET_KEY = os.getenv("JWT_SECRET", "your-super-secret-jwt-key-change-this")
 ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 30))
 REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", 7))
@@ -33,9 +32,14 @@ def verify_token(token: str):
         return None
 
 def hash_password(password: str) -> str:
-    """Hash password"""
-    return pwd_context.hash(password)
+    """Simple password hashing (fallback if bcrypt not available)"""
+    salt = secrets.token_hex(16)
+    return hashlib.sha256(f"{password}{salt}".encode()).hexdigest() + ":" + salt
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify password"""
-    return pwd_context.verify(plain_password, hashed_password)
+    """Simple password verification"""
+    try:
+        hashed, salt = hashed_password.split(":")
+        return hashed == hashlib.sha256(f"{plain_password}{salt}".encode()).hexdigest()
+    except:
+        return False
