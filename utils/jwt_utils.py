@@ -1,8 +1,6 @@
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
 import os
-import hashlib
-import secrets
 
 SECRET_KEY = os.getenv("JWT_SECRET", "your-super-secret-jwt-key-change-this")
 ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
@@ -30,16 +28,3 @@ def verify_token(token: str):
         return payload
     except JWTError:
         return None
-
-def hash_password(password: str) -> str:
-    """Simple password hashing (fallback if bcrypt not available)"""
-    salt = secrets.token_hex(16)
-    return hashlib.sha256(f"{password}{salt}".encode()).hexdigest() + ":" + salt
-
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Simple password verification"""
-    try:
-        hashed, salt = hashed_password.split(":")
-        return hashed == hashlib.sha256(f"{plain_password}{salt}".encode()).hexdigest()
-    except:
-        return False

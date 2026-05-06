@@ -3,9 +3,7 @@ from db import get_users_collection
 import sys
 import os
 
-# Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from utils.jwt_utils import create_access_token, create_refresh_token, verify_token
 
 class TokenService:
@@ -13,17 +11,18 @@ class TokenService:
     async def save_user_token(github_id: int, access_token: str, refresh_token: str = None):
         """Save user token in database"""
         users_collection = await get_users_collection()
-        await users_collection.update_one(
-            {"github_id": github_id},
-            {
-                "$set": {
-                    "access_token": access_token,
-                    "refresh_token": refresh_token,
-                    "last_login": datetime.utcnow()
-                }
-            },
-            upsert=True
-        )
+        if users_collection:
+            await users_collection.update_one(
+                {"github_id": github_id},
+                {
+                    "$set": {
+                        "access_token": access_token,
+                        "refresh_token": refresh_token,
+                        "last_login": datetime.utcnow()
+                    }
+                },
+                upsert=True
+            )
     
     @staticmethod
     async def refresh_access_token(refresh_token: str) -> dict:
@@ -33,14 +32,14 @@ class TokenService:
             return None
         
         users_collection = await get_users_collection()
-        user = await users_collection.find_one({"github_id": payload.get("user_id")})
-        
-        if not user:
-            return None
+        if users_collection:
+            user = await users_collection.find_one({"github_id": payload.get("user_id")})
+            if not user:
+                return None
         
         new_access_token = create_access_token({
-            "user_id": user["github_id"], 
-            "username": user["username"]
+            "user_id": payload.get("user_id"), 
+            "username": payload.get("username")
         })
         return {"access_token": new_access_token}
     
@@ -52,7 +51,9 @@ class TokenService:
             return None
         
         users_collection = await get_users_collection()
-        user = await users_collection.find_one({"github_id": payload.get("user_id")})
-        return user
+        if users_collection:
+            user = await users_collection.find_one({"github_id": payload.get("user_id")})
+            return user
+        return {"github_id": payload.get("user_id"), "username": payload.get("username")}
 
 token_service = TokenService()
