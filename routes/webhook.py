@@ -22,6 +22,7 @@ async def webhook(req: Request):
         return {"error": "invalid signature"}
 
     payload = await req.json()
+    print("WEBHOOK RECEIVED:", payload)
 
     installation_id = payload.get("installation", {}).get("id")
     sender_id = payload["sender"]["id"]
