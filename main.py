@@ -1,5 +1,7 @@
 import sys
 import os
+
+# Insert backend root so all sub-packages resolve correctly on Railway
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from contextlib import asynccontextmanager
@@ -16,20 +18,20 @@ from routes.webhooks import router as webhooks_router
 from routes.ws import router as ws_router
 from middlewares.rate_limiter import RateLimitMiddleware
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await connect_db()
     yield
     await disconnect_db()
 
+
 app = FastAPI(
-    title="AutoDoc Gen GitHub API",
-    description="GitHub Integration API with OAuth, Webhooks, and WebSockets",
+    title="AutoDoc Gen — GitHub API",
     version="1.0.0",
     lifespan=lifespan,
 )
 
-# CORS
 allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",")
 app.add_middleware(
     CORSMiddleware,
@@ -39,15 +41,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Custom Middlewares
 app.add_middleware(RateLimitMiddleware)
 
-# Routers
-app.include_router(auth_router, prefix="/auth", tags=["Authentication"])
-app.include_router(repos_router, prefix="/repos", tags=["Repositories"])
+app.include_router(auth_router,     prefix="/auth",     tags=["Auth"])
+app.include_router(repos_router,    prefix="/repos",    tags=["Repos"])
 app.include_router(webhooks_router, prefix="/webhooks", tags=["Webhooks"])
-app.include_router(ws_router, prefix="/ws", tags=["WebSockets"])
+app.include_router(ws_router,       prefix="/ws",       tags=["WebSocket"])
+
 
 @app.get("/health")
-async def health_check():
-    return {"status": "healthy", "service": "AutoDoc Gen GitHub API"}
+async def health():
+    return {"status": "ok"}
