@@ -13,7 +13,7 @@ def app_jwt():
 
 
 # Get installation token
-async def installation_token(installation_id):
+async def get_installation_token(installation_id):
     token = app_jwt()
 
     async with httpx.AsyncClient() as c:
