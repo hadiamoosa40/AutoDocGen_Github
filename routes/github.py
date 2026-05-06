@@ -1,4 +1,5 @@
 from fastapi import APIRouter
+from bson import ObjectId
 import httpx
 
 from db import users
@@ -9,8 +10,8 @@ router = APIRouter()
 # GET REPOS
 @router.get("/repos")
 async def repos(uid: str):
-
-    user = await users.find_one({"_id": uid})
+    user = await users.find_one({"_id": ObjectId(uid)})
+    print("USER:", user)
 
     if not user or not user.get("installation_id"):
         return {"error": "GitHub App not installed"}
