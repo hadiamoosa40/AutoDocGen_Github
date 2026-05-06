@@ -1,7 +1,35 @@
+import os
 from motor.motor_asyncio import AsyncIOMotorClient
-from config import MONGODB_URI
+from dotenv import load_dotenv
 
-client = AsyncIOMotorClient(MONGODB_URI)
+load_dotenv()
 
-db = client.github_integ   # ✅ matches database name
-users = db.users
+class Database:
+    client: AsyncIOMotorClient = None
+    db = None
+
+db_instance = Database()
+
+async def connect_db():
+    mongo_uri = os.getenv("MONGODB_URI")
+    db_name = os.getenv("MONGODB_DB_NAME", "github_integ")
+    db_instance.client = AsyncIOMotorClient(mongo_uri)
+    db_instance.db = db_instance.client[db_name]
+    print(f"✅ Connected to MongoDB: {db_name}")
+
+    # Create indexes
+    await db_instance.db.users.create_index("github_id", unique=True)
+    await db_instance.db.users.create_index("username")
+    await db_instance.db.tokens.create_index("user_id")
+    await db_instance.db.tokens.create_index("jti", unique=True)
+    await db_instance.db.webhooks.create_index("repo_full_name")
+    await db_instance.db.webhooks.create_index("user_id")
+    print("✅ MongoDB indexes created")
+
+async def disconnect_db():
+    if db_instance.client:
+        db_instance.client.close()
+        print("🔌 Disconnected from MongoDB")
+
+def get_db():
+    return db_instance.db

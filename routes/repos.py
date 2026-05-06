@@ -1,94 +1,76 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
-from typing import Optional, Dict, Any
-from app.services.repo_service import RepoService
-from app.services.doc_generator import doc_generator
-from app.middlewares.auth_middleware import get_current_user
-from app.db import get_collection
-from app.models.user import User
+from fastapi import APIRouter, Request, Query
+from services.repo_service import (
+    list_user_repos,
+    get_repo_tree,
+    fetch_file_content,
+    fetch_all_code_files,
+)
+from services.auth_service import get_user_by_id
 
-router = APIRouter(prefix="/repos", tags=["repositories"])
+router = APIRouter()
 
-@router.get("/list")
-async def get_user_repos(request: Request, user: User = Depends(get_current_user)):
-    # Get stored access token
-    collection = get_collection("users")
-    user_data = await collection.find_one({"github_id": user.github_id})
-    
-    if not user_data or "access_token" not in user_data:
-        raise HTTPException(status_code=401, detail="GitHub access token not found")
-    
-    repos = await RepoService.get_repos(
-        user_data["access_token"],
-        str(user.github_id)
-    )
-    
-    return {
-        "repos": [{"name": repo["full_name"], "id": repo["id"], "description": repo.get("description")} for repo in repos]
-    }
 
-@router.get("/{repo_full_name:path}/contents")
-async def get_repo_contents(
-    repo_full_name: str,
-    path: str = "",
-    request: Request = None,
-    user: User = Depends(get_current_user)
-):
-    collection = get_collection("users")
-    user_data = await collection.find_one({"github_id": user.github_id})
-    
-    if not user_data or "access_token" not in user_data:
-        raise HTTPException(status_code=401, detail="GitHub access token not found")
-    
-    contents = await RepoService.get_repo_tree(
-        user_data["access_token"],
-        repo_full_name,
-        str(user.github_id),
-        path
-    )
-    
-    return {"contents": contents}
+async def _get_github_token(request: Request) -> str:
+    user_id = request.state.user_id
+    user = await get_user_by_id(user_id)
+    return user["github_token"]
 
-@router.post("/{repo_full_name:path}/generate-docs")
-async def generate_repo_docs(
-    repo_full_name: str,
+
+@router.get("/")
+async def list_repos(
     request: Request,
-    user: User = Depends(get_current_user)
+    page: int = Query(1, ge=1),
+    per_page: int = Query(30, ge=1, le=100),
 ):
-    collection = get_collection("users")
-    user_data = await collection.find_one({"github_id": user.github_id})
-    
-    if not user_data or "access_token" not in user_data:
-        raise HTTPException(status_code=401, detail="GitHub access token not found")
-    
-    # Fetch all code files
-    files = await RepoService.fetch_all_code(
-        user_data["access_token"],
-        repo_full_name,
-        str(user.github_id)
-    )
-    
-    # Generate documentation
-    documentation = await doc_generator.generate_documentation(
-        files,
-        repo_full_name,
-        str(user.github_id)
-    )
-    
-    # Store documentation in database
-    docs_collection = get_collection("documentations")
-    await docs_collection.update_one(
-        {"repo_name": repo_full_name, "user_id": user.github_id},
-        {"$set": {
-            "documentation": documentation,
-            "files_count": len(files),
-            "generated_at": "datetime.utcnow()"
-        }},
-        upsert=True
-    )
-    
+    """List all repositories for the authenticated user."""
+    github_token = await _get_github_token(request)
+    repos = await list_user_repos(github_token, page=page, per_page=per_page)
+    return {"repos": repos, "page": page, "per_page": per_page, "count": len(repos)}
+
+
+@router.get("/{owner}/{repo}/tree")
+async def get_tree(
+    request: Request,
+    owner: str,
+    repo: str,
+    path: str = Query("", description="Directory path within repo"),
+):
+    """Get file/directory tree of a repository."""
+    github_token = await _get_github_token(request)
+    tree = await get_repo_tree(github_token, owner, repo, path)
+    return {"owner": owner, "repo": repo, "path": path, "tree": tree}
+
+
+@router.get("/{owner}/{repo}/file")
+async def get_file(
+    request: Request,
+    owner: str,
+    repo: str,
+    path: str = Query(..., description="File path within repo"),
+):
+    """Fetch content of a single file."""
+    github_token = await _get_github_token(request)
+    file_data = await fetch_file_content(github_token, owner, repo, path)
+    return file_data
+
+
+@router.get("/{owner}/{repo}/code")
+async def get_all_code(
+    request: Request,
+    owner: str,
+    repo: str,
+):
+    """
+    Recursively fetch all code files in a repo.
+    Returns structured data ready for LangChain ingestion.
+    """
+    github_token = await _get_github_token(request)
+    files = await fetch_all_code_files(github_token, owner, repo)
+    total_size = sum(f.get("size", 0) for f in files)
     return {
-        "message": "Documentation generated successfully",
-        "repo": repo_full_name,
-        "files_processed": len(files),
-        "documentation": documentation[:1000] + "..."  # Preview
+        "owner": owner,
+        "repo": repo,
+        "file_count": len(files),
+        "total_size_bytes": total_size,
+        "files": files,
     }

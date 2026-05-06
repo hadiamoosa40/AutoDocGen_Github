@@ -1,68 +1,51 @@
+import os
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
-import logging
+from dotenv import load_dotenv
 
-from app.db import connect_to_mongo, close_mongo_connection
-from app.routes import auth, repos, webhook, websocket
-from app.middlewares.error_handler import (
-    global_exception_handler,
-    http_exception_handler,
-    validation_exception_handler
-)
-from fastapi.exceptions import RequestValidationError
-from starlette.exceptions import HTTPException as StarletteHTTPException
+from db.database import connect_db, disconnect_db
+from routes.auth import router as auth_router
+from routes.repos import router as repos_router
+from routes.webhooks import router as webhooks_router
+from routes.ws import router as ws_router
+from middlewares.auth_middleware import AuthMiddleware
+from middlewares.rate_limiter import RateLimitMiddleware
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+load_dotenv()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
-    logger.info("Starting up...")
-    await connect_to_mongo()
+    await connect_db()
     yield
-    # Shutdown
-    logger.info("Shutting down...")
-    await close_mongo_connection()
+    await disconnect_db()
 
-# Create FastAPI app
 app = FastAPI(
-    title="GitHub Documentation Generator API",
-    description="Generate documentation from GitHub repositories",
+    title="AutoDoc Gen GitHub API",
+    description="GitHub Integration API with OAuth, Webhooks, and WebSockets",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
-# CORS middleware
+# CORS
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "https://autodocgengithub-production.up.railway.app"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Exception handlers
-app.add_exception_handler(Exception, global_exception_handler)
-app.add_exception_handler(StarletteHTTPException, http_exception_handler)
-app.add_exception_handler(RequestValidationError, validation_exception_handler)
+# Custom Middlewares
+app.add_middleware(RateLimitMiddleware)
 
-# Include routers
-app.include_router(auth.router)
-app.include_router(repos.router)
-app.include_router(webhook.router)
-app.include_router(websocket.router)
-
-@app.get("/")
-async def root():
-    return {
-        "message": "GitHub Documentation Generator API",
-        "version": "1.0.0",
-        "docs": "/docs"
-    }
+# Routers
+app.include_router(auth_router, prefix="/auth", tags=["Authentication"])
+app.include_router(repos_router, prefix="/repos", tags=["Repositories"])
+app.include_router(webhooks_router, prefix="/webhooks", tags=["Webhooks"])
+app.include_router(ws_router, prefix="/ws", tags=["WebSockets"])
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy"}
+    return {"status": "healthy", "service": "AutoDoc Gen GitHub API"}
