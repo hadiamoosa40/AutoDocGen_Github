@@ -1,54 +1,55 @@
-import sys
-import os
-
-# Insert backend root so all sub-packages resolve correctly on Railway
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from dotenv import load_dotenv
-
-load_dotenv()
-
-from db.database import connect_db, disconnect_db
-from routes.auth import router as auth_router
-from routes.repos import router as repos_router
-from routes.webhooks import router as webhooks_router
-from routes.ws import router as ws_router
-from middlewares.rate_limiter import RateLimitMiddleware
-
+from contextlib import asynccontextmanager
+from db import Database
+from routes import auth_router, github_router, webhook_router, websocket_router
+import os
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await connect_db()
+    # Startup
+    await Database.connect_db()
+    print("🚀 Application started")
     yield
-    await disconnect_db()
-
+    # Shutdown
+    await Database.close_db()
+    print("👋 Application shutdown")
 
 app = FastAPI(
-    title="AutoDoc Gen — GitHub API",
+    title="GitHub Integration API",
+    description="Production-grade GitHub integration with JWT, WebSockets, and Webhooks",
     version="1.0.0",
-    lifespan=lifespan,
+    lifespan=lifespan
 )
 
-allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",")
+# CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
+    allow_origins=[os.getenv("FRONTEND_URL", "http://localhost:5173")],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-app.add_middleware(RateLimitMiddleware)
+# Include routers
+app.include_router(auth_router)
+app.include_router(github_router)
+app.include_router(webhook_router)
+app.include_router(websocket_router)
 
-app.include_router(auth_router,     prefix="/auth",     tags=["Auth"])
-app.include_router(repos_router,    prefix="/repos",    tags=["Repos"])
-app.include_router(webhooks_router, prefix="/webhooks", tags=["Webhooks"])
-app.include_router(ws_router,       prefix="/ws",       tags=["WebSocket"])
-
+@app.get("/")
+async def root():
+    return {
+        "message": "GitHub Integration API",
+        "status": "running",
+        "version": "1.0.0"
+    }
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    return {"status": "healthy"}
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
