@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request
 import hmac, hashlib
 from config import GITHUB_WEBHOOK_SECRET
 
@@ -10,7 +10,12 @@ async def webhook(req: Request):
     sig = req.headers.get("X-Hub-Signature-256")
 
     mac = hmac.new(GITHUB_WEBHOOK_SECRET.encode(), body, hashlib.sha256)
-    if not hmac.compare_digest("sha256=" + mac.hexdigest(), sig):
-        raise HTTPException(403)
 
-    return {"ok": True}
+    if not hmac.compare_digest("sha256=" + mac.hexdigest(), sig):
+        return {"error": "invalid"}
+
+    payload = await req.json()
+
+    return {
+        "installation_id": payload.get("installation", {}).get("id")
+    }
