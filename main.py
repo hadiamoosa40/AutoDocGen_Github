@@ -7,8 +7,7 @@ app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:5173",   # local frontend
-        "https://autodocgengithub-production.up.railway.app"  # optional (same backend)
+        "http://localhost:5173"
     ],
     allow_credentials=True,
     allow_methods=["*"],
