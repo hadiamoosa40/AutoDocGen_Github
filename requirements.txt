@@ -8,6 +8,8 @@ PyJWT
 cryptography
 httpx
 pydantic
+websockets
+python-multipart==0.0.6
 
 langchain
 langchain-community
